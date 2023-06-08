@@ -7,8 +7,7 @@ from mindspore import jit as ms_jit
 from mindspore.communication import init, get_rank
 from mindspore.communication.management import GlobalComm
 from mindspore.parallel._utils import _get_device_num, _get_gradients_mean
-from mindspore.train import Model
-from src.models import CPMBee, CPMBeeConfig, CPMBeeSimple
+from src.models import CPMBee, CPMBeeConfig, CPMBeeSimple, Forward, TrainStep
 
 def get_dataset(batch, seqlen, num_segment_bucket, ext_table_size, step_per_epoch):
     """
@@ -36,7 +35,7 @@ def get_dataset(batch, seqlen, num_segment_bucket, ext_table_size, step_per_epoc
     return generate
 
 
-def get_dataset(batch, seqlen, ext_table_size, step_per_epoch):
+def get_simple_dataset(batch, seqlen, ext_table_size, step_per_epoch):
     """
     """
     input = np.random.randint(0, 1000, (batch, seqlen)).astype(np.int32)
@@ -71,6 +70,41 @@ cpm_1b_config = {
     "half" : True,
 }
 
+
+def test_cpm_bee_cell():
+    var_single_batch_size = 2
+
+    ms.set_context(mode=ms.GRAPH_MODE, device_target="GPU", save_graphs=2, save_graphs_path="./saved_graph")
+    ms.set_auto_parallel_context(parallel_mode=ms.ParallelMode.AUTO_PARALLEL, \
+                                 search_mode="sharding_propagation", \
+                                 dataset_strategy="data_parallel")
+
+    init("nccl")
+
+    # 随机构造数据集
+    fake_dataset = get_dataset(var_single_batch_size, 256, cpm_1b_config["position_bias_num_segment_buckets"], 64, 100)
+    dataset = ds.GeneratorDataset(fake_dataset, ["input", "input_sub", "length", "context", "sample_ids", "num_segments",
+                                                 "segment", "segment_rel", "segment_rel_offset", "span",
+                                                 "ext_table_ids", "ext_table_sub", "label"])
+
+    config = CPMBeeConfig(**cpm_1b_config)
+    model = Forward(config)
+    model.shard(1, 4)
+
+    learning_rate = 0.4
+    epoch_size = 5
+    optimizer = nn.AdamWeightDecay(model.trainable_params(), learning_rate)
+
+    train_step = TrainStep(model, optimizer)
+
+    data_iter = dataset.create_tuple_iterator()
+    for epoch in range(epoch_size):
+        for idx, data in enumerate(data_iter):
+            loss = train_step(data)
+            print(f"Epoch_{epoch}/Step_{idx}: Loss:{loss}.")
+
+
+@pytest.mark.skipif(True, reason='duplicate compile')
 def test_cpm_bee_simple_backward():
     var_single_batch_size = 2
 
@@ -89,7 +123,7 @@ def test_cpm_bee_simple_backward():
     rank_id = get_rank()
 
     # 随机构造数据集
-    fake_dataset = get_dataset(var_single_batch_size, 256, 64, 100)
+    fake_dataset = get_simple_dataset(var_single_batch_size, 256, 64, 100)
     """"
     Tensor(input), Tensor(input_sub), Tensor(position), Tensor(segment_bucket), \
                 Tensor(attention_mask), Tensor(ext_table_ids), Tensor(ext_table_sub), Tensor(label)
@@ -179,5 +213,4 @@ def test_cpm_bee_backward():
     for epoch in range(epoch_size):
         for idx, data in enumerate(data_iter):
             loss = train_step(data)
-            if idx % 100 == 0:
-                print(f"Epoch_{epoch}/Step_{idx}: Loss:{loss}.")
+            print(f"Epoch_{epoch}/Step_{idx}: Loss:{loss}.")

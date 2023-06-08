@@ -19,6 +19,8 @@ from mindspore import nn, ops
 from mindspore import Tensor
 from mindspore.common import dtype as mstype
 from mindspore.common.initializer import Normal
+from mindspore.communication.management import GlobalComm
+from mindspore.parallel._utils import _get_device_num, _get_gradients_mean
 
 from ..native_layers import Encoder, EmbeddingExt, BucketPositionBias
 from ..utils import Config
@@ -248,3 +250,34 @@ class CPMBeeSimple(nn.Cell):
     def shard(self, dp, mp):
         # self.input_embedding.shard(dp, mp)
         self.encoder.shard(dp, mp)
+
+class Forward(nn.Cell):
+    def __init__(self, config):
+        super().__init__()
+        self.model = CPMBee(config)
+        self.loss_fn = nn.CrossEntropyLoss()
+    
+    def construct(self, inputs):
+        logits, _ = self.model(*inputs[:-1])
+        loss = self.loss_fn(logits.view((-1, logits.shape[-1])), inputs[-1].view(-1))
+        return loss
+
+    def shard(self, dp, mp):
+        self.model.shard(dp, mp)
+
+class TrainStep(nn.Cell):
+    def __init__(self, forward_fn, optimizer):
+        super().__init__()
+        self.grad_fn = ops.value_and_grad(forward_fn, None, forward_fn.trainable_params())
+        self.optimizer = optimizer
+
+        group = GlobalComm.WORLD_COMM_GROUP
+        mean = _get_gradients_mean()
+        degree = _get_device_num()
+        self.grad_reducer = nn.DistributedGradReducer(optimizer.parameters, mean, degree, group=group)
+
+    def construct(self, inputs):
+        loss, grads = self.grad_fn(inputs)
+        grads = self.grad_reducer(grads)
+        self.optimizer(grads)
+        return loss
