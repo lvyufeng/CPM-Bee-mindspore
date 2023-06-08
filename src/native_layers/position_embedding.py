@@ -128,7 +128,7 @@ class BucketPositionBias(nn.Cell):
         num_buckets: int = 32,
         num_segment_bucket: int = 32,
         max_distance: int = 128,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         param_init: Union[str, Initializer] = 'normal',
     ) -> None:
         super().__init__()
@@ -213,7 +213,7 @@ class RotaryEmbedding(nn.Cell):
         dim,
         base=10000,
         distance_scale: Union[int, float] = 1,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
     ):
         super().__init__()
         inv_freq = 1.0 / (

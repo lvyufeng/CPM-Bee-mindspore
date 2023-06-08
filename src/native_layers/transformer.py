@@ -43,7 +43,7 @@ class Encoder(nn.Cell):
         dim_ff: int,
         num_heads: int,
         dim_head: int,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         eps: float = 1e-6,
         dropout_p: Optional[float] = None,
         mask_modules: Optional[List[Tuple[bool, bool]]] = None,

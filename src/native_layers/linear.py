@@ -25,7 +25,7 @@ class Linear(nn.Cell):
         self,
         dim_in: int,
         dim_out: int,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         param_init: Union[str, Initializer] = 'normal',
         scale_before: bool = False,
     ):

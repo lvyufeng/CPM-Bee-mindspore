@@ -27,7 +27,7 @@ class Embedding(nn.Cell):
         self,
         vocab_size: int,
         embedding_size: int,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         param_init: Union[str, Initializer] = 'normal',
     ):
 
@@ -69,7 +69,7 @@ class EmbeddingExt(nn.Cell):
         vocab_size: int,
         embedding_size: int,
         distance_scale: int = 16,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         param_init: Union[str, Initializer] = 'normal',
     ):
 
@@ -85,6 +85,9 @@ class EmbeddingExt(nn.Cell):
             'weight'
         )
 
+        self.gather = ops.Gather()
+
+
     def construct(self, ids: Tensor, ids_sub: Tensor):
         """
         Args:
@@ -93,8 +96,7 @@ class EmbeddingExt(nn.Cell):
         Return:
             :obj:`Tensor` of shape ``(batch_size, seq_len, embedding_size)``: The embedding output.
         """  # noqa: E501
-
-        embeds = ops.gather(self.weight, ids, 0) / ops.sqrt(ops.scalar_to_tensor(self.dim_model))
+        embeds = self.gather(self.weight, ids, 0) / ops.sqrt(ops.scalar_to_tensor(self.dim_model))
         return self.rotary_emb(embeds, ids_sub)
 
     def projection(self, x: Tensor, ext_table: Optional[Tensor] = None):
@@ -107,7 +109,10 @@ class EmbeddingExt(nn.Cell):
             :obj:`Tensor` of shape ``(batch, seq_len, vocab_size + ext_table_size)``: The projection output.
         """  # noqa: E501
         logits = ops.matmul(x / ops.sqrt(ops.scalar_to_tensor(self.dim_model)), self.weight.swapaxes(0, 1))
-        if ext_table is not None:
-            logits_ext = ops.matmul(x, ext_table.swapaxes(0, 1))
-            logits = ops.cat([logits, logits_ext], axis=-1)
+        # if ext_table is not None:
+        #     logits_ext = ops.matmul(x, ext_table.swapaxes(0, 1))
+        #     logits = ops.cat([logits, logits_ext], axis=-1)
         return logits
+
+    def shard(self, dp, mp):
+        self.gather.shard(((1, 1), (dp, 1)))

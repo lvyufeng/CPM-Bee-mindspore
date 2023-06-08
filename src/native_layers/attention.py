@@ -20,6 +20,7 @@ from mindspore import nn, ops
 from mindspore import Tensor
 from mindspore.common import dtype as mstype
 from .linear import Linear
+from ..ops import masked_fill
 
 
 class Attention(nn.Cell):
@@ -28,7 +29,7 @@ class Attention(nn.Cell):
         dim_model: int,
         num_heads: int,
         dim_head: int,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         dropout_p: Optional[float] = None,
     ) -> None:
 
@@ -90,18 +91,18 @@ class Attention(nn.Cell):
         # (b, n_h, len_q, d_h) @ (b, n_h, d_h, len_k) -> (b, n_h, len_q, len_k)
         score = ops.matmul(h_q, h_k.swapaxes(-1, -2)) / ops.sqrt(ops.scalar_to_tensor(self.dim_head))
         score = score + position_bias
-        score = ops.masked_fill(
+        score = masked_fill(
             score,
             attention_mask.view((batch_size, 1, len_q, len_k)) == False,
-            ops.scalar_to_tensor(float("-inf"), dtype=score.dtype),
+            float("-inf"),
         )
 
         score = self.softmax(score)
 
-        score = ops.masked_fill(
+        score = masked_fill(
             score,
             attention_mask.view((batch_size, 1, len_q, len_k)) == False,
-            ops.scalar_to_tensor(0, dtype=score.dtype),
+            0,
         )
 
         if self.dropout is not None:

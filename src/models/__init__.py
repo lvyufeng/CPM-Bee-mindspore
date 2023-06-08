@@ -1,1 +1,1 @@
-from .bee import CPMBee, CPMBeeConfig
+from .bee import CPMBee, CPMBeeConfig, CPMBeeSimple

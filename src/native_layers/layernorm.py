@@ -10,7 +10,7 @@ class LayerNorm(nn.Cell):
     def __init__(
         self,
         dim_norm: int,
-        dtype: mstype.tensor = mstype.half,
+        dtype: mstype.float_ = mstype.half,
         eps: float = 1e-6,
         init_var: float = 1.0,
     ):
