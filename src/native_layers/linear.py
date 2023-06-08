@@ -35,6 +35,7 @@ class Linear(nn.Cell):
         self.scale_before = scale_before
 
         self.weight = Parameter(initializer(param_init, (dim_out, dim_in), dtype=dtype), 'weight')
+        self.matmul = ops.MatMul()
 
     def construct(self, x: Tensor):
         """
@@ -43,10 +44,16 @@ class Linear(nn.Cell):
         Returns:
             :obj:`torch.Tensor` of shape ``(batch, seq_len, dim_out)``: The output of the linear transform y.
         """  # noqa: E501
+        x_shape = x.shape
+        x = x.astype(self.weight.dtype)
         if self.scale_before:
             x = x / ops.sqrt(ops.scalar_to_tensor(self.dim_in))
-            x = ops.matmul(x, self.weight)
+            x = self.matmul(x.reshape(-1, x_shape[-1]), self.weight.swapaxes(0, 1))
         else:
-            x = ops.matmul(x, self.weight.swapaxes(0, 1))
+            x = self.matmul(x.reshape(-1, x_shape[-1]), self.weight.swapaxes(0, 1))
             x = x / ops.sqrt(ops.scalar_to_tensor(self.dim_in))
+        x = x.reshape(x_shape[:-1] + (x.shape[-1],))
         return x
+
+    def shard(self, dp, mp):
+        self.matmul.shard(((dp, mp), (mp, 1)))

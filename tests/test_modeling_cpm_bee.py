@@ -66,7 +66,7 @@ def test_cpm_bee_backward(jit):
 
     def train_step(inputs, targets):
         loss, grads = grad_fn(inputs, targets)
-        return loss
+        return loss, grads
 
     if jit:
         train_step = ms_jit(forward)

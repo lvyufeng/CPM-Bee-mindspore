@@ -99,6 +99,9 @@ class SelfAttentionBlock(nn.Cell):
         else:
             return hidden_states
 
+    def shard(self, dp, mp):
+        self.self_attention.shard(dp, mp)
+
 
 class FFNBlock(nn.Cell):
     """The whole feed-forward block. A sequence of operation. Consists of layernorm, feed-forward and residual connection.
@@ -248,3 +251,6 @@ class TransformerBlock(nn.Cell):
             return hidden_states, current_key_value
         else:
             return hidden_states
+
+    def shard(self, dp, mp):
+        self.self_att.shard(dp, mp)

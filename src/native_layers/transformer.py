@@ -124,3 +124,7 @@ class Encoder(nn.Cell):
                 return hidden_states, current_key_values
             else:
                 return hidden_states
+
+    def shard(self, dp, mp):
+        for cell in self.layers:
+            cell.shard(dp, mp)

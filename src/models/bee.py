@@ -69,7 +69,6 @@ class CPMBeeConfig(Config):
         self.mask_modules = mask_modules
 
 
-
 class CPMBee(nn.Cell):
     def __init__(self, config: CPMBeeConfig):
         super().__init__()
@@ -168,7 +167,7 @@ class CPMBee(nn.Cell):
         attention_mask = (
             mask_1d.view((batch, seqlen, 1)) & mask_1d.view((batch, 1, seqlen)) & attention_mask
         )
-        position = ops.arange(seqlen, dtype=mstype.int32).expand(Tensor([batch, seqlen]))
+        position = ops.arange(seqlen, dtype=mstype.int32).broadcast_to((batch, seqlen))
 
         position = ops.stop_gradient(position)
         segment_bucket = ops.stop_gradient(segment_bucket)
@@ -184,6 +183,9 @@ class CPMBee(nn.Cell):
         logits = self.input_embedding.projection(hidden_states, ext_table)
 
         return logits, hidden_states
+
+    def shard(self, dp, mp):
+        self.encoder.shard(dp, mp)
 
     # no support inference for now.
     # def inference(

@@ -118,3 +118,10 @@ class Attention(nn.Cell):
             return score, (h_k, h_v)
         else:
             return score
+
+
+    def shard(self, dp, mp):
+        self.project_q.shard(dp, mp)
+        self.project_k.shard(dp, mp)
+        self.project_v.shard(dp, mp)
+        self.attention_out.shard(dp, mp)
