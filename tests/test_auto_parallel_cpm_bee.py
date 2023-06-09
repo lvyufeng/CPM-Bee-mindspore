@@ -59,7 +59,7 @@ cpm_1b_config = {
     "vocab_size": 86583,
     "dim_model": 4096,
     "dim_ff" : 1024,
-    "num_layers" : 48,
+    "num_layers" : 12,
     "num_heads": 32,
     "dim_head" : 40,
     "dropout_p" : 0.0,
@@ -88,9 +88,9 @@ def test_cpm_bee_cell():
 
     config = CPMBeeConfig(**cpm_1b_config)
     model = Forward(config)
-    model.shard(1, 8)
+    model.shard(1, 4)
 
-    learning_rate = 0.4
+    learning_rate = 0.001
     epoch_size = 5
     optimizer = nn.AdamWeightDecay(model.trainable_params(), learning_rate)
 

@@ -76,6 +76,7 @@ class EmbeddingExt(nn.Cell):
         super().__init__()
 
         self.dim_model = embedding_size
+        self.vocab_size = vocab_size
         self.rotary_emb = RotaryEmbedding(
             dim=embedding_size, distance_scale=distance_scale, dtype=dtype
         )
@@ -86,7 +87,6 @@ class EmbeddingExt(nn.Cell):
         )
 
         self.gather = ops.Gather()
-
 
     def construct(self, ids: Tensor, ids_sub: Tensor):
         """
@@ -108,10 +108,16 @@ class EmbeddingExt(nn.Cell):
         Returns:
             :obj:`Tensor` of shape ``(batch, seq_len, vocab_size + ext_table_size)``: The projection output.
         """  # noqa: E501
+        x_shape = x.shape
+        x = x.reshape((-1, x_shape[-1]))
         logits = ops.matmul(x / ops.sqrt(ops.scalar_to_tensor(self.dim_model)), self.weight.swapaxes(0, 1))
-        # if ext_table is not None:
-        #     logits_ext = ops.matmul(x, ext_table.swapaxes(0, 1))
-        #     logits = ops.cat([logits, logits_ext], axis=-1)
+        if ext_table is not None:
+            logits_ext = ops.matmul(x, ext_table.swapaxes(0, 1))
+            logits = ops.cat([logits, logits_ext], axis=-1)
+            logits = logits.reshape(x_shape[:-1] + (self.vocab_size + ext_table.shape[0],))
+        else:
+            logits = logits.reshape(x_shape[:-1] + (self.vocab_size,))
+
         return logits
 
     def shard(self, dp, mp):
