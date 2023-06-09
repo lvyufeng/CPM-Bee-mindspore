@@ -175,9 +175,6 @@ class CPMBee(nn.Cell):
         position = ops.stop_gradient(position)
         segment_bucket = ops.stop_gradient(segment_bucket)
         attention_mask = ops.stop_gradient(attention_mask)
-        print(position.shape, position.dtype)
-        print(segment_bucket.shape, segment_bucket.dtype)
-        print(attention_mask.shape, attention_mask.dtype)
 
         hidden_states = self.input_embedding(input, input_sub)
         position_bias = self.position_bias(position, position, segment_bucket)
@@ -254,12 +251,23 @@ class CPMBeeSimple(nn.Cell):
 class Forward(nn.Cell):
     def __init__(self, config):
         super().__init__()
-        self.model = CPMBee(config)
+        self.model = CPMBeeSimple(config)
+        self.model.recompute()
         self.loss_fn = nn.CrossEntropyLoss()
     
-    def construct(self, inputs):
-        logits, _ = self.model(*inputs[:-1])
-        loss = self.loss_fn(logits.view((-1, logits.shape[-1])), inputs[-1].view(-1))
+    def construct(
+        self,
+        input: Tensor,  # (batch, seqlen) int32
+        input_sub: Tensor,  # (batch, seqlen) int32
+        position: Tensor,  # (batch, seqlen) int32
+        segment_bucket: Tensor,  # (batch, seqlen, seqlen) int32
+        attention_mask: Tensor,  # (batch, seqlen, seqlen) bool
+        ext_table_ids: Tensor,  # (ext_table_size) int32
+        ext_table_sub: Tensor,  # (ext_table_size) int32
+        label: Tensor
+        ):
+        logits, _ = self.model(input, input_sub, position, segment_bucket, attention_mask, ext_table_ids, ext_table_sub)
+        loss = self.loss_fn(logits.view((-1, logits.shape[-1])), label.view(-1))
         return loss
 
     def shard(self, dp, mp):
@@ -276,8 +284,19 @@ class TrainStep(nn.Cell):
         degree = _get_device_num()
         self.grad_reducer = nn.DistributedGradReducer(optimizer.parameters, mean, degree, group=group)
 
-    def construct(self, inputs):
-        loss, grads = self.grad_fn(inputs)
+    def construct(
+        self,
+        input: Tensor,  # (batch, seqlen) int32
+        input_sub: Tensor,  # (batch, seqlen) int32
+        position: Tensor,  # (batch, seqlen) int32
+        segment_bucket: Tensor,  # (batch, seqlen, seqlen) int32
+        attention_mask: Tensor,  # (batch, seqlen, seqlen) bool
+        ext_table_ids: Tensor,  # (ext_table_size) int32
+        ext_table_sub: Tensor,  # (ext_table_size) int32
+        label: Tensor
+        ):
+        loss, grads = self.grad_fn(input, input_sub, position, segment_bucket,
+                                   attention_mask, ext_table_ids, ext_table_sub, label)
         grads = self.grad_reducer(grads)
         self.optimizer(grads)
         return loss

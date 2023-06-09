@@ -4,6 +4,7 @@ import mindspore as ms
 import mindspore.dataset as ds
 from mindspore import Tensor, nn, value_and_grad
 from mindspore import jit as ms_jit
+from mindspore import mutable
 from mindspore.communication import init, get_rank
 from mindspore.communication.management import GlobalComm
 from mindspore.parallel._utils import _get_device_num, _get_gradients_mean
@@ -55,11 +56,10 @@ def get_simple_dataset(batch, seqlen, ext_table_size, step_per_epoch):
     return generate
 
 cpm_1b_config = {
-    # "vocab_size": 86583,
-    "vocab_size": 40000,
+    "vocab_size": 86583,
     "dim_model": 4096,
     "dim_ff" : 1024,
-    "num_layers" : 8,
+    "num_layers" : 48,
     "num_heads": 32,
     "dim_head" : 40,
     "dropout_p" : 0.0,
@@ -77,19 +77,18 @@ def test_cpm_bee_cell():
     ms.set_context(mode=ms.GRAPH_MODE, device_target="GPU", save_graphs=2, save_graphs_path="./saved_graph")
     ms.set_auto_parallel_context(parallel_mode=ms.ParallelMode.AUTO_PARALLEL, \
                                  search_mode="sharding_propagation", \
-                                 dataset_strategy="data_parallel")
+                                 dataset_strategy="data_parallel", enable_parallel_optimizer=True)
 
     init("nccl")
 
     # 随机构造数据集
-    fake_dataset = get_dataset(var_single_batch_size, 256, cpm_1b_config["position_bias_num_segment_buckets"], 64, 100)
-    dataset = ds.GeneratorDataset(fake_dataset, ["input", "input_sub", "length", "context", "sample_ids", "num_segments",
-                                                 "segment", "segment_rel", "segment_rel_offset", "span",
+    fake_dataset = get_simple_dataset(var_single_batch_size, 256, 64, 100)
+    dataset = ds.GeneratorDataset(fake_dataset, ["input", "input_sub", "position", "segment_bucket", "attention_mask",
                                                  "ext_table_ids", "ext_table_sub", "label"])
 
     config = CPMBeeConfig(**cpm_1b_config)
     model = Forward(config)
-    model.shard(1, 4)
+    model.shard(1, 8)
 
     learning_rate = 0.4
     epoch_size = 5
@@ -100,7 +99,7 @@ def test_cpm_bee_cell():
     data_iter = dataset.create_tuple_iterator()
     for epoch in range(epoch_size):
         for idx, data in enumerate(data_iter):
-            loss = train_step(data)
+            loss = train_step(*data)
             print(f"Epoch_{epoch}/Step_{idx}: Loss:{loss}.")
 
 
@@ -124,11 +123,6 @@ def test_cpm_bee_simple_backward():
 
     # 随机构造数据集
     fake_dataset = get_simple_dataset(var_single_batch_size, 256, 64, 100)
-    """"
-    Tensor(input), Tensor(input_sub), Tensor(position), Tensor(segment_bucket), \
-                Tensor(attention_mask), Tensor(ext_table_ids), Tensor(ext_table_sub), Tensor(label)
-
-    """
     dataset = ds.GeneratorDataset(fake_dataset, ["input", "input_sub", "position", "segment_bucket", "attention_mask",
                                                  "ext_table_ids", "ext_table_sub", "label"])
 
