@@ -59,7 +59,7 @@ cpm_1b_config = {
     "vocab_size": 86583,
     "dim_model": 4096,
     "dim_ff" : 1024,
-    "num_layers" : 12,
+    "num_layers" : 48,
     "num_heads": 32,
     "dim_head" : 40,
     "dropout_p" : 0.0,
@@ -72,7 +72,7 @@ cpm_1b_config = {
 
 
 def test_cpm_bee_cell():
-    var_single_batch_size = 2
+    var_single_batch_size = 1
 
     ms.set_context(mode=ms.GRAPH_MODE, device_target="GPU", save_graphs=2, save_graphs_path="./saved_graph")
     ms.set_auto_parallel_context(parallel_mode=ms.ParallelMode.AUTO_PARALLEL, \
@@ -88,7 +88,7 @@ def test_cpm_bee_cell():
 
     config = CPMBeeConfig(**cpm_1b_config)
     model = Forward(config)
-    model.shard(1, 4)
+    model.shard(4, 1)
 
     learning_rate = 0.001
     epoch_size = 5

@@ -13,20 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
-from mindspore import nn, ops
-from mindspore import Parameter, Tensor
-from mindspore.common import dtype as mstype
-from mindspore.common.initializer import Initializer, initializer
+import torch
+import bmtrain as bmt
+import math
+import torch.nn.functional as F
 
 
-class Linear(nn.Cell):
+class Linear(bmt.DistributedModule):
     def __init__(
         self,
         dim_in: int,
         dim_out: int,
-        dtype: mstype.float_ = mstype.half,
-        param_init: Union[str, Initializer] = 'normal',
+        dtype: torch.dtype = torch.half,
+        init_mean: float = 0.0,
+        init_std: float = 1,
         scale_before: bool = False,
     ):
         super().__init__()
@@ -34,26 +34,24 @@ class Linear(nn.Cell):
         self.dim_out = self.out_features = dim_out
         self.scale_before = scale_before
 
-        self.weight = Parameter(initializer(param_init, (dim_out, dim_in), dtype=dtype), 'weight')
-        self.matmul = ops.MatMul()
+        self.weight = bmt.DistributedParameter(
+            torch.empty((dim_out, dim_in), dtype=dtype),
+            init_method=bmt.ParameterInitializer(
+                torch.nn.init.normal_, mean=init_mean, std=init_std
+            ),
+        )
 
-    def construct(self, x: Tensor):
+    def forward(self, x: torch.Tensor):
         """
         Args:
             x (:obj:`torch.Tensor` of shape ``(batch, seq_len, dim_in)``): The input of linear layer
         Returns:
             :obj:`torch.Tensor` of shape ``(batch, seq_len, dim_out)``: The output of the linear transform y.
         """  # noqa: E501
-        x_shape = x.shape
-        x = x.astype(self.weight.dtype)
         if self.scale_before:
-            x = x / ops.sqrt(ops.scalar_to_tensor(self.dim_in, self.weight.dtype))
-            x = self.matmul(x.reshape(-1, x_shape[-1]), self.weight.swapaxes(0, 1))
+            x = x / math.sqrt(self.dim_in)
+            x = F.linear(x, self.weight)
         else:
-            x = self.matmul(x.reshape(-1, x_shape[-1]), self.weight.swapaxes(0, 1))
-            x = x / ops.sqrt(ops.scalar_to_tensor(self.dim_in, self.weight.dtype))
-        x = x.reshape(x_shape[:-1] + (x.shape[-1],))
+            x = F.linear(x, self.weight)
+            x = x / math.sqrt(self.dim_in)
         return x
-
-    def shard(self, dp, mp):
-        self.matmul.shard(((dp, mp), (mp, 1)))

@@ -14,17 +14,17 @@
 # limitations under the License.
 
 from typing import Optional
-from mindspore import nn, Tensor
-from mindspore.common import dtype as mstype
+import torch
+import bmtrain as bmt
 from .linear import Linear
 
 
-class DenseGatedACT(nn.Cell):
+class DenseGatedACT(bmt.DistributedModule):
     def __init__(
         self,
         dim_in: int,
         dim_ff: int,
-        dtype=mstype.half,
+        dtype=torch.half,
     ):
         super().__init__()
 
@@ -41,17 +41,17 @@ class DenseGatedACT(nn.Cell):
             dtype=dtype,
             scale_before=False,
         )
-        self.act = nn.GELU(False)
-        # self.act.recompute()
+        self.act = torch.nn.GELU()
 
-    def construct(self, x: Tensor):
-        """Transform an input tensor from one feature space to another via a nonlinear operation
+    def forward(self, x: torch.Tensor):
+        """This model inherits from bmt.DistributedModule.
+            Transform an input tensor from one feature space to another via a nonlinear operation
 
         Args:
-            x (:obj:`Tensor` of shape ``(batch, seq_len, dim_in)``): Tensor that will be subject to nonlinear operations.
+            x (:obj:`torch.Tensor` of shape ``(batch, seq_len, dim_in)``): Tensor that will be subject to nonlinear operations.
 
         Return:
-            out (:obj:`Tensor` of shape ``(batch, seq_len, dim_ff)``)
+            out (:obj:`torch.Tensor` of shape ``(batch, seq_len, dim_ff)``)
 
         """  # noqa: E501
         gate_score = self.act(self.w_0(x))
@@ -60,11 +60,8 @@ class DenseGatedACT(nn.Cell):
         x = gate_score * x
         return x
 
-    def shard(self, dp, mp):
-        self.w_0.shard(dp, mp)
-        self.w_1.shard(dp, mp)
 
-class FeedForward(nn.Cell):
+class FeedForward(bmt.DistributedModule):
     r"""FeedForward module
 
     Args:
@@ -83,7 +80,7 @@ class FeedForward(nn.Cell):
         self,
         dim_model: int,
         dim_ff: int,
-        dtype=mstype.half,
+        dtype=torch.half,
         dropout_p: Optional[float] = None,
     ):
 
@@ -96,7 +93,7 @@ class FeedForward(nn.Cell):
         )
 
         if dropout_p is not None:
-            self.dropout = nn.Dropout(p=dropout_p)
+            self.dropout = torch.nn.Dropout(dropout_p)
         else:
             self.dropout = None
 
@@ -107,13 +104,13 @@ class FeedForward(nn.Cell):
             scale_before=False,
         )
 
-    def construct(self, x: Tensor):
+    def forward(self, x: torch.Tensor):
         """
         Args:
-            x (:obj:`Tensor` of shape ``(batch, seq_len, dim_in)``): The input of feed-forward module.
+            x (:obj:`torch.Tensor` of shape ``(batch, seq_len, dim_in)``): The input of feed-forward module.
 
         Return:
-            :obj:`Tensor` of shape ``(batch, seq_len, dim_out)``: The output of feed-forward module.
+            :obj:`torch.Tensor` of shape ``(batch, seq_len, dim_out)``: The output of feed-forward module.
         """  # noqa: E501
         x = self.w_in(x)
 
@@ -123,7 +120,3 @@ class FeedForward(nn.Cell):
         x = self.w_out(x)
 
         return x
-
-    def shard(self, dp, mp):
-        self.w_in.shard(dp, mp)
-        self.w_out.shard(dp, mp)

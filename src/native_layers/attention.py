@@ -89,16 +89,17 @@ class Attention(nn.Cell):
             len_k = h_k.shape[-2]
 
         # (b, n_h, len_q, d_h) @ (b, n_h, d_h, len_k) -> (b, n_h, len_q, len_k)
-        score = ops.matmul(h_q, h_k.swapaxes(-1, -2)) / ops.sqrt(ops.scalar_to_tensor(self.dim_head))
+        score = ops.matmul(h_q, h_k.swapaxes(-1, -2)) / ops.sqrt(ops.scalar_to_tensor(self.dim_head, h_k.dtype))
         score = score + position_bias
         score = masked_fill(
             score,
             attention_mask.view((batch_size, 1, len_q, len_k)) == False,
             float("-inf"),
         )
-
+        score_dtype = score.dtype
+        score = score.float()
         score = self.softmax(score)
-
+        score = score.to(score_dtype)
         score = masked_fill(
             score,
             attention_mask.view((batch_size, 1, len_q, len_k)) == False,

@@ -204,7 +204,6 @@ class BucketPositionBias(nn.Cell):
             is_small, relative_position.to(mstype.int32), relative_postion_if_large
         )
         return relative_buckets
-        
 
 
 class RotaryEmbedding(nn.Cell):

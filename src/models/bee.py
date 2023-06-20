@@ -178,7 +178,6 @@ class CPMBee(nn.Cell):
 
         hidden_states = self.input_embedding(input, input_sub)
         position_bias = self.position_bias(position, position, segment_bucket)
-
         hidden_states = self.encoder(hidden_states, attention_mask, position_bias)
 
         ext_table = self.input_embedding(ext_table_ids, ext_table_sub)
@@ -252,7 +251,6 @@ class Forward(nn.Cell):
     def __init__(self, config):
         super().__init__()
         self.model = CPMBeeSimple(config)
-        self.model.recompute()
         self.loss_fn = nn.CrossEntropyLoss()
     
     def construct(

@@ -14,15 +14,13 @@
 # limitations under the License.
 
 from typing import Optional, Tuple
-from mindspore import nn
-from mindspore import Tensor
-from mindspore.common import dtype as mstype
+import torch
 from .layernorm import LayerNorm
 from .attention import Attention
 from .feedforward import FeedForward
 
 
-class SelfAttentionBlock(nn.Cell):
+class SelfAttentionBlock(torch.nn.Module):
     """The whole cross-attention block. A sequence of operation. Consists of layernorm, self-attention and residual connection.
 
     Args:
@@ -39,7 +37,7 @@ class SelfAttentionBlock(nn.Cell):
         dim_model: int,
         num_heads: int,
         dim_head: int,
-        dtype=mstype.half,
+        dtype=torch.half,
         eps: float = 1e-6,
         dropout_p: Optional[float] = None,
     ):
@@ -61,26 +59,26 @@ class SelfAttentionBlock(nn.Cell):
         )
 
         if dropout_p:
-            self.dropout = nn.Dropout(p=dropout_p)
+            self.dropout = torch.nn.Dropout(dropout_p)
         else:
             self.dropout = None
 
-    def construct(
+    def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor,
-        position_bias: Optional[Tensor] = None,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        position_bias: Optional[torch.Tensor] = None,
         use_cache: bool = False,
-        past_key_value: Optional[Tuple[Tensor, Tensor]] = None,
+        past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ):
         """
         Args:
-            hidden_states (:obj:`Tensor` of shape ``(batch, seq_self, dim_model)``): Input of self-attention block. It can be the embedding of a batch of sequences.
-            attention_mask (:obj:`Tensor` of shape ``(batch, seq_self, seq_self)``): Avoid invalid areas to participate in the calculation.
-            position_bias (:obj:`Tensor` of shape ``(num_heads, seq_self, seq_self)``): Provide positional information to self-attention block.
+            hidden_states (:obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``): Input of self-attention block. It can be the embedding of a batch of sequences.
+            attention_mask (:obj:`torch.Tensor` of shape ``(batch, seq_self, seq_self)``): Avoid invalid areas to participate in the calculation.
+            position_bias (:obj:`torch.Tensor` of shape ``(num_heads, seq_self, seq_self)``): Provide positional information to self-attention block.
 
         Return:
-            :obj:`Tensor` of shape ``(batch, seq_self, dim_model)``: The output of attention block.
+            :obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``: The output of attention block.
 
         """  # noqa: E501
         x = self.layernorm_before_attention(hidden_states)
@@ -99,11 +97,8 @@ class SelfAttentionBlock(nn.Cell):
         else:
             return hidden_states
 
-    def shard(self, dp, mp):
-        self.self_attention.shard(dp, mp)
 
-
-class FFNBlock(nn.Cell):
+class FFNBlock(torch.nn.Module):
     """The whole feed-forward block. A sequence of operation. Consists of layernorm, feed-forward and residual connection.
 
     Args:
@@ -118,7 +113,7 @@ class FFNBlock(nn.Cell):
         self,
         dim_model: int,
         dim_ff: int,
-        dtype=mstype.half,
+        dtype=torch.half,
         eps: float = 1e-6,
         dropout_p: Optional[float] = 0,
     ):
@@ -138,20 +133,20 @@ class FFNBlock(nn.Cell):
         )
 
         if dropout_p:
-            self.dropout = nn.Dropout(p=dropout_p)
+            self.dropout = torch.nn.Dropout(dropout_p)
         else:
             self.dropout = None
 
-    def construct(
+    def forward(
         self,
-        hidden_states: Tensor,
+        hidden_states: torch.Tensor,
     ):
         """
         Args:
-            hidden_states (:obj:`Tensor` of shape ``(batch, seq_self, dim_model)``): Hidden states before feed forward layer.
+            hidden_states (:obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``): Hidden states before feed forward layer.
 
         Return:
-            :obj:`Tensor` of shape ``(batch, seq_self, dim_model)``: The output of feed-forward block
+            :obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``: The output of feed-forward block
 
         """  # noqa: E501
         x = self.layernorm_before_ffn(hidden_states)
@@ -161,10 +156,8 @@ class FFNBlock(nn.Cell):
         hidden_states = (hidden_states + x) / 1.05
         return hidden_states
 
-    def shard(self, dp, mp):
-        self.ffn.shard(dp, mp)
 
-class TransformerBlock(nn.Cell):
+class TransformerBlock(torch.nn.Module):
     """The whole transformer block. A sequence of operation. Consists of self-attention block[, cross-attention block] and feed-forward block.
 
     Args:
@@ -183,7 +176,7 @@ class TransformerBlock(nn.Cell):
         dim_ff: int,
         num_heads: int,
         dim_head: int,
-        dtype=mstype.half,
+        dtype=torch.half,
         eps: float = 1e-6,
         dropout_p: Optional[float] = None,
         mask_att: bool = False,
@@ -212,22 +205,22 @@ class TransformerBlock(nn.Cell):
                 dropout_p=dropout_p,
             )
 
-    def construct(
+    def forward(
         self,
-        self_hidden_states: Tensor,
-        self_attention_mask: Tensor,
-        self_position_bias: Optional[Tensor] = None,
+        self_hidden_states: torch.Tensor,
+        self_attention_mask: torch.Tensor,
+        self_position_bias: Optional[torch.Tensor] = None,
         use_cache: bool = False,
-        past_key_value: Optional[Tuple[Tensor, Tensor]] = None,
+        past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ):
         """
         Args:
-            self_hidden_states (:obj:`Tensor` of shape ``(batch, seq_self, dim_model)``): Input of transformer block(self-attention block). It can be the raw embedding of a batch of sequences.
-            self_attention_mask (:obj:`Tensor` of shape ``(batch, seq_self, seq_self)``): Avoid invalid areas to participate in the calculation of self-attention.
-            self_position_bias (:obj:`Tensor` of shape ``(num_heads, seq_self, seq_self)``): Provide positional information to self-attention block.
+            self_hidden_states (:obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``): Input of transformer block(self-attention block). It can be the raw embedding of a batch of sequences.
+            self_attention_mask (:obj:`torch.Tensor` of shape ``(batch, seq_self, seq_self)``): Avoid invalid areas to participate in the calculation of self-attention.
+            self_position_bias (:obj:`torch.Tensor` of shape ``(num_heads, seq_self, seq_self)``): Provide positional information to self-attention block.
 
         Return:
-            :obj:`Tensor` of shape ``(batch, seq_self, dim_model)``: The output of transformer block.
+            :obj:`torch.Tensor` of shape ``(batch, seq_self, dim_model)``: The output of transformer block.
 
         """  # noqa: E501
         # (batch, dim_model, seq_self)
@@ -253,7 +246,3 @@ class TransformerBlock(nn.Cell):
             return hidden_states, current_key_value
         else:
             return hidden_states
-
-    def shard(self, dp, mp):
-        self.self_att.shard(dp, mp)
-        self.ffn.shard(dp, mp)
