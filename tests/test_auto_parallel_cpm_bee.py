@@ -55,19 +55,20 @@ def get_simple_dataset(batch, seqlen, ext_table_size, step_per_epoch):
 
     return generate
 
-cpm_1b_config = {
+cpm_2b_config = {
     "vocab_size": 86583,
     "dim_model": 4096,
-    "dim_ff" : 1024,
+    "dim_ff" : 5120,
     "num_layers" : 48,
     "num_heads": 32,
-    "dim_head" : 40,
+    "dim_head" : 64,
     "dropout_p" : 0.0,
     "position_bias_num_buckets" : 256,
     "position_bias_num_segment_buckets": 256,
     "position_bias_max_distance" : 2048,
     "eps" : 1e-6,
     "half" : True,
+    "mask_modules": [[False, False], [True, False], [False, False], [True, False], [True, True], [True, False], [True, True], [True, True], [False, False], [False, False], [True, True], [True, False], [True, False], [True, True], [False, False], [True, True], [False, False], [False, True], [True, False], [True, True], [False, False], [False, True], [True, True], [True, True], [False, False], [True, True], [False, False], [True, True], [True, True], [False, False], [True, True], [False, False], [True, True], [False, False], [True, True], [True, False], [True, True], [True, True], [True, True], [False, False], [True, True], [False, False], [True, True], [True, True], [False, False], [True, True], [False, False], [False, False]]
 }
 
 
@@ -86,7 +87,7 @@ def test_cpm_bee_cell():
     dataset = ds.GeneratorDataset(fake_dataset, ["input", "input_sub", "position", "segment_bucket", "attention_mask",
                                                  "ext_table_ids", "ext_table_sub", "label"])
 
-    config = CPMBeeConfig(**cpm_1b_config)
+    config = CPMBeeConfig(**cpm_2b_config)
     model = Forward(config)
     model.shard(4, 1)
 

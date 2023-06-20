@@ -14,12 +14,14 @@
 # limitations under the License.
 
 from typing import Optional, List, Tuple
+import mindspore
 from mindspore import nn, ops
 from mindspore import Tensor, Parameter
 from mindspore.common import dtype as mstype
 from mindspore.common.initializer import Initializer, initializer
 from .blocks import TransformerBlock
 from .layernorm import LayerNorm
+
 
 
 class Encoder(nn.Cell):
@@ -64,22 +66,23 @@ class Encoder(nn.Cell):
         else:
             mask_modules = [(False, False)] * num_layers
 
-        self.layers = nn.CellList(
-            [
-                TransformerBlock(
-                    dim_model=dim_model,
-                    dim_ff=dim_ff,
-                    num_heads=num_heads,
-                    dim_head=dim_head,
-                    dtype=dtype,
-                    eps=eps,
-                    dropout_p=dropout_p,
-                    mask_att=mask_modules[ith][0],
-                    mask_ffn=mask_modules[ith][1],
-                )
-                for ith in range(num_layers)
-            ]
-        )
+        self.layers = nn.CellList()
+
+        for ith in range(num_layers):
+            block = TransformerBlock(
+                        dim_model=dim_model,
+                        dim_ff=dim_ff,
+                        num_heads=num_heads,
+                        dim_head=dim_head,
+                        dtype=dtype,
+                        eps=eps,
+                        dropout_p=dropout_p,
+                        mask_att=mask_modules[ith][0],
+                        mask_ffn=mask_modules[ith][1],
+                    )
+            if mindspore.get_context('mode') == mindspore.GRAPH_MODE:
+                block.recompute()
+            self.layers.append(block)
 
         self.output_layernorm = LayerNorm(dim_norm=dim_model, dtype=dtype, eps=eps)
 

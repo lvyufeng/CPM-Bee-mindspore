@@ -15,6 +15,9 @@
 
 from typing import Optional, Tuple, List
 from typing_extensions import TypedDict
+
+import numpy as np
+
 from mindspore import nn, ops
 from mindspore import Tensor
 from mindspore.common import dtype as mstype
@@ -221,6 +224,85 @@ class CPMBeeSimple(nn.Cell):
             max_distance=config.position_bias_max_distance,
             dtype=config.dtype,
         )
+
+
+    @staticmethod
+    def prepare_data(
+        input,  # (batch, seqlen) int32
+        input_sub,  # (batch, seqlen) int32
+        length,  # (batch) int32
+        context,  # (batch, seqlen) bool
+        sample_ids,  # (batch, seq_len) int32
+        num_segments,  # (batch, seq_len) int32
+        segment,  # (batch, seqlen) int32
+        segment_rel_offset,  # (batch, seq_len) int32
+        segment_rel,  # (batch, num_segment_bucket) int32
+        span,  # (batch, seqlen) int32
+        ext_table_ids,  # (ext_table_size) int32
+        ext_table_sub,  # (ext_table_size) int32
+    ):
+        batch = input.shape[0]
+        seqlen = input.shape[1]
+        # processing masks and position bias bucket
+        def masked_fill_np(inputs, mask, value):
+            masked = np.full_like(inputs, value, inputs.dtype)
+            outputs = np.where(mask, masked, inputs)
+            return outputs
+
+        # calc segment bucket
+        segment_rel_2d = masked_fill_np(
+            segment[:, :, None] * num_segments[:, :, None]
+            + segment[:, None, :]
+            + segment_rel_offset[:, :, None],
+            ~(
+                (sample_ids[:, :, None] == sample_ids[:, None, :])
+                & (span[:, None, :] == span[:, :, None])
+            ),  # not in the same span or sample
+            0,  # avoid torch.gather overflow
+        ).reshape((batch, seqlen * seqlen))
+
+        print(segment_rel_2d.shape)
+        print(segment_rel_2d.dtype)
+        segment_bucket = np.take_along_axis(
+            segment_rel,
+            segment_rel_2d.astype(np.int32),
+            axis=1
+        ).reshape((batch, seqlen, seqlen))
+
+        segment_bucket = masked_fill_np(
+            segment_bucket,
+            ~(
+                (sample_ids[:, :, None] == sample_ids[:, None, :])
+                & (span[:, None, :] == span[:, :, None])
+            ),  # not in the same span or sample
+            1,  # bucket is used for in-context samples
+        )
+
+        # directional mask
+        directional_mask_2d = np.arange(seqlen) <= np.arange(seqlen).reshape((-1, 1))
+        # sample mask
+        sample_mask_2d = (sample_ids[:, :, None] == 0) | (
+            sample_ids[:, :, None] == sample_ids[:, None, :]
+        )
+        # context mask
+        attention_mask = context[:, None, :] | (
+            np.logical_not(context[:, :, None]) & directional_mask_2d.reshape((1, seqlen, seqlen))
+        )
+        # span mask
+        attention_mask = (
+            attention_mask & sample_mask_2d & (span[:, None, :] == span[:, :, None])
+        )
+        # length mask
+        mask_1d = (
+            np.tile(np.arange(seqlen)[None, :], (batch, 1)) < length[:, None]
+        )
+        attention_mask = (
+            mask_1d.reshape((batch, seqlen, 1)) & mask_1d.reshape((batch, 1, seqlen)) & attention_mask
+        )
+        position = np.broadcast_to(np.arange(seqlen, dtype=np.int32), (batch, seqlen))
+
+        return_list = [input, input_sub, position, segment_bucket, attention_mask, ext_table_ids, ext_table_sub]
+        return tuple(Tensor(i) for i in return_list)
 
     def construct(
         self,

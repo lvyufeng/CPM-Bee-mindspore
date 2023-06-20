@@ -255,5 +255,7 @@ class TransformerBlock(nn.Cell):
             return hidden_states
 
     def shard(self, dp, mp):
-        self.self_att.shard(dp, mp)
-        self.ffn.shard(dp, mp)
+        if not self.mask_att:
+            self.self_att.shard(dp, mp)
+        if not self.mask_ffn:
+            self.ffn.shard(dp, mp)
