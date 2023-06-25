@@ -21,11 +21,11 @@ import numpy as np
 from mindspore import nn, ops
 from mindspore import Tensor
 from mindspore.common import dtype as mstype
-from mindspore.common.initializer import Normal
+from mindspore.common.initializer import initializer, Normal, Constant
 from mindspore.communication.management import GlobalComm
 from mindspore.parallel._utils import _get_device_num, _get_gradients_mean
 
-from ..native_layers import Encoder, EmbeddingExt, BucketPositionBias
+from ..native_layers import Encoder, EmbeddingExt, BucketPositionBias, Linear, LayerNorm, SegmentPositionEmbedding
 from ..utils import Config
 from ..ops import masked_fill
 
@@ -380,3 +380,11 @@ class TrainStep(nn.Cell):
         grads = self.grad_reducer(grads)
         self.optimizer(grads)
         return loss
+
+def init_weights(cell):
+    if isinstance(cell, Linear):
+        cell.weight.set_data(initializer(Normal(1.0), cell.weight.shape, cell.weight.dtype))
+    elif isinstance(cell, LayerNorm):
+        cell.weight.set_data(initializer(Constant(1.0), cell.weight.shape, cell.weight.dtype))
+    elif isinstance(cell, EmbeddingExt):
+        cell.weight.set_data(initializer(Normal(0.02), cell.weight.shape, cell.weight.dtype))

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from mindspore import Tensor, nn, value_and_grad
 from mindspore import jit as ms_jit
-from src.models import CPMBee, CPMBeeConfig
+from src.models import CPMBee, CPMBeeConfig, init_weights
 
 def make_tensor(batch, seqlen, num_segment_bucket, ext_table_size):
     # input: Tensor,  # (batch, seqlen) int32
@@ -53,6 +53,7 @@ def test_cpm_bee_forward(jit):
 def test_cpm_bee_backward(jit):
     config = CPMBeeConfig(2000, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=32)
     model = CPMBee(config)
+    model.apply(init_weights)
     loss_fn = nn.CrossEntropyLoss()
 
     inputs, targets = make_tensor(4, 32, config.position_bias_num_segment_buckets, 32)
