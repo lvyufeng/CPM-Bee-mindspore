@@ -2,8 +2,61 @@ import torch
 import numpy as np
 import mindspore as ms
 from src.models import CPMBeeConfig, CPMBee
+from src.dataset import SimpleDataset
+from src.tokenizers import CPMBeeTokenizer
+from src.data_converter import _MixedDatasetConfig, _MixedDatasetSaver
+
 from cpm_live.models import CPMBeeTorch
 from cpm_live.models import CPMBeeConfig as CPMBeeTorchConfig
+
+
+def make_real_tensor():
+    dataset_path = '/mnt/code/lvyufeng/CPM-Bee/tutorials/basic_task_finetune/bin_data/train'
+    ds = SimpleDataset(dataset_path, shuffle=False)
+
+    batch_size = 2
+    max_length = 2048
+    tokenizer = CPMBeeTokenizer()
+    max_depth = 8
+    _packer = _MixedDatasetSaver(
+            batch_size, max_length, tokenizer, max_depth
+        )
+    _ds_cfg: _MixedDatasetConfig = {
+    "weight": 1.0,
+    "path": dataset_path,
+    "transforms": [],
+    "task_name": 'test_task',
+    "dataset_name": "finetune",
+    "incontext_weight": [1.0],
+    "lines": len(ds),
+    "dataset": ds,
+    }
+
+    while True:
+        try:
+            batch = _packer.add_data(_ds_cfg)
+        except EOFError:
+            break
+        if batch is None:
+            continue
+        else:
+            break
+
+    print(batch['segment_rel'].shape)
+    return (
+        batch['inputs'],  # (batch, seqlen) int32
+        batch['inputs_sub'],  # (batch, seqlen) int32
+        batch['length'],  # (batch) int32
+        batch['context'],  # (batch, seqlen) bool
+        batch['sample_ids'],  # (batch, seq_len) int32
+        batch['num_segments'],  # (batch, seq_len) int32
+        batch['segment_ids'],  # (batch, seqlen) int32
+        batch['segment_rel_offset'],  # (batch, seq_len) int32
+        batch['segment_rel'],  # (batch, num_segment_bucket) int32
+        batch['spans'],  # (batch, seqlen) int32
+        batch['ext_ids'],  # (ext_table_size) int32
+        batch['ext_sub'],  # (ext_table_size) int32
+    )
 
 def make_tensor(batch, seqlen, num_segment_bucket, ext_table_size):
     # input: Tensor,  # (batch, seqlen) int32
@@ -37,14 +90,13 @@ def make_tensor(batch, seqlen, num_segment_bucket, ext_table_size):
 def test_ms_pt_cmp():
     # default CPM-Bee 10b
     # config = CPMBeeConfig()
-    config = CPMBeeConfig(2000, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=256, half=False)
-    pt_config = CPMBeeTorchConfig(2000, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=256, half=False)
+    config = CPMBeeConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=False)
+    pt_config = CPMBeeTorchConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=False)
     ms_model = CPMBee(config)
     pt_model = CPMBeeTorch(pt_config).cuda()
 
     # pt_states = torch.load('/mnt/data1/cpm-bee/pytorch_model.bin')
     # pt_model.load_state_dict(pt_states)
-    pt_model.eval()
 
     pt_states = pt_model.state_dict()
     for name, param in ms_model.parameters_and_names():
@@ -54,24 +106,29 @@ def test_ms_pt_cmp():
             name = name.replace('beta', 'bias')
         if 'embedding_table' in name:
             name = name.replace('embedding_table', 'weight')
-        param.set_data(ms.Tensor(pt_states[name].cpu().detach().numpy()))
+        
+        pt_states[name] = torch.tensor(param.asnumpy())
+        # param.set_data(ms.Tensor(pt_states[name].cpu().detach().numpy()))
+
+    pt_model.load_state_dict(pt_states)
+
     # ms_dict = ms.load_checkpoint('/mnt/data1/cpm-bee/mindspore_model.ckpt')
     # ms.load_param_into_net(ms_model, ms_dict)
+    pt_model.eval()
     ms_model.set_train(False)
 
-    inputs_np = make_tensor(4, 256, config.position_bias_num_segment_buckets, 256)
+    inputs_np = make_tensor(2, 2048, config.position_bias_num_segment_buckets, 256)
+    # inputs_np = make_real_tensor()
+
     inputs_ms = [ms.Tensor(i) for i in inputs_np]
     inputs_pt = [torch.tensor(i).cuda() for i in inputs_np]
 
-    logits_ms, _ = ms_model(*inputs_ms)
     logits_pt, _ = pt_model(*inputs_pt)
+    logits_ms, _ = ms_model(*inputs_ms)
 
+    print(logits_pt, logits_ms)
     print('\nlogits ms:', logits_ms.shape)
     print('logits pt:', logits_pt.shape)
-    logits = np.random.randn(4, 256, 4096)
-    # assert np.allclose(logits_ms.asnumpy(),
-    #                    logits_pt.cpu().detach().numpy(),
-    #                    1e-3, 1e-3)
-    assert np.allclose(logits,
-                       logits,
+    assert np.allclose(logits_ms.asnumpy(),
+                       logits_pt.cpu().detach().numpy(),
                        1e-3, 1e-3)
