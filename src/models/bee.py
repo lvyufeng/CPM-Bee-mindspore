@@ -131,8 +131,9 @@ class CPMBee(nn.Cell):
             + segment[:, None, :]
             + segment_rel_offset[:, :, None],
             ~(
-                (sample_ids[:, :, None] == sample_ids[:, None, :])
-                & (span[:, None, :] == span[:, :, None])
+                ops.logical_and(
+                (sample_ids[:, :, None] == sample_ids[:, None, :]),
+                (span[:, None, :] == span[:, :, None]))
             ),  # not in the same span or sample
             0,  # avoid torch.gather overflow
         ).view((batch, seqlen * seqlen))
@@ -146,8 +147,8 @@ class CPMBee(nn.Cell):
         segment_bucket = masked_fill(
             segment_bucket,
             ~(
-                (sample_ids[:, :, None] == sample_ids[:, None, :])
-                & (span[:, None, :] == span[:, :, None])
+                ops.logical_and((sample_ids[:, :, None] == sample_ids[:, None, :]),
+                (span[:, None, :] == span[:, :, None]))
             ),  # not in the same span or sample
             1,  # bucket is used for in-context samples
         )
@@ -160,11 +161,13 @@ class CPMBee(nn.Cell):
         )
         # context mask
         attention_mask = context[:, None, :] | (
-            ops.logical_not(context[:, :, None]) & directional_mask_2d.view((1, seqlen, seqlen))
+            ops.logical_and(ops.logical_not(context[:, :, None]),
+                            directional_mask_2d.view((1, seqlen, seqlen)))
         )
         # span mask
         attention_mask = (
-            attention_mask & sample_mask_2d & (span[:, None, :] == span[:, :, None])
+            ops.logical_and(ops.logical_and(attention_mask, sample_mask_2d),
+                            (span[:, None, :] == span[:, :, None]))
         )
         # length mask
         mask_1d = (
@@ -190,7 +193,7 @@ class CPMBee(nn.Cell):
         return logits, hidden_states
 
     def shard(self, dp, mp):
-        # self.input_embedding.shard(dp, mp)
+        self.input_embedding.shard(dp, mp)
         self.encoder.shard(dp, mp)
 
 
@@ -326,60 +329,44 @@ class CPMBeeSimple(nn.Cell):
         return logits, hidden_states
 
     def shard(self, dp, mp):
-        # self.input_embedding.shard(dp, mp)
+        self.input_embedding.shard(dp, mp)
         self.encoder.shard(dp, mp)
 
-class Forward(nn.Cell):
+class BeeForward(nn.Cell):
     def __init__(self, config):
         super().__init__()
-        self.model = CPMBeeSimple(config)
+        self.model = CPMBee(config)
+        # self.loss_fn = nn.SoftmaxCrossEntropyWithLogits(True, 'mean')
         self.loss_fn = nn.CrossEntropyLoss()
-    
+
     def construct(
         self,
         input: Tensor,  # (batch, seqlen) int32
         input_sub: Tensor,  # (batch, seqlen) int32
-        position: Tensor,  # (batch, seqlen) int32
-        segment_bucket: Tensor,  # (batch, seqlen, seqlen) int32
-        attention_mask: Tensor,  # (batch, seqlen, seqlen) bool
+        length: Tensor,  # (batch) int32
+        context: Tensor,  # (batch, seqlen) bool
+        sample_ids: Tensor,  # (batch, seq_len) int32
+        num_segments: Tensor,  # (batch, seq_len) int32
+        segment: Tensor,  # (batch, seqlen) int32
+        segment_rel_offset: Tensor,  # (batch, seq_len) int32
+        segment_rel: Tensor,  # (batch, num_segment_bucket) int32
+        span: Tensor,  # (batch, seqlen) int32
         ext_table_ids: Tensor,  # (ext_table_size) int32
         ext_table_sub: Tensor,  # (ext_table_size) int32
         label: Tensor
         ):
-        logits, _ = self.model(input, input_sub, position, segment_bucket, attention_mask, ext_table_ids, ext_table_sub)
+        ext_table_ids = ext_table_ids[0]
+        ext_table_sub = ext_table_sub[0]
+        logits, _ = self.model(input, input_sub, length, context, sample_ids,
+                               num_segments, segment, segment_rel_offset, segment_rel, span,
+                               ext_table_ids, ext_table_sub)
+        logits = logits.astype(mstype.float32)
         loss = self.loss_fn(logits.view((-1, logits.shape[-1])), label.view(-1))
         return loss
 
     def shard(self, dp, mp):
         self.model.shard(dp, mp)
 
-class TrainStep(nn.Cell):
-    def __init__(self, forward_fn, optimizer):
-        super().__init__()
-        self.grad_fn = ops.value_and_grad(forward_fn, None, forward_fn.trainable_params())
-        self.optimizer = optimizer
-
-        group = GlobalComm.WORLD_COMM_GROUP
-        mean = _get_gradients_mean()
-        degree = _get_device_num()
-        self.grad_reducer = nn.DistributedGradReducer(optimizer.parameters, mean, degree, group=group)
-
-    def construct(
-        self,
-        input: Tensor,  # (batch, seqlen) int32
-        input_sub: Tensor,  # (batch, seqlen) int32
-        position: Tensor,  # (batch, seqlen) int32
-        segment_bucket: Tensor,  # (batch, seqlen, seqlen) int32
-        attention_mask: Tensor,  # (batch, seqlen, seqlen) bool
-        ext_table_ids: Tensor,  # (ext_table_size) int32
-        ext_table_sub: Tensor,  # (ext_table_size) int32
-        label: Tensor
-        ):
-        loss, grads = self.grad_fn(input, input_sub, position, segment_bucket,
-                                   attention_mask, ext_table_ids, ext_table_sub, label)
-        grads = self.grad_reducer(grads)
-        self.optimizer(grads)
-        return loss
 
 def init_weights(cell):
     if isinstance(cell, Linear):

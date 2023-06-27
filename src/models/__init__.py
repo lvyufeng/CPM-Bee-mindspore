@@ -1,1 +1,1 @@
-from .bee import CPMBee, CPMBeeConfig, CPMBeeSimple, Forward, TrainStep, init_weights
+from .bee import CPMBee, CPMBeeConfig, CPMBeeSimple, BeeForward, init_weights

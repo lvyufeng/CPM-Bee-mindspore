@@ -688,14 +688,13 @@ def save_mindrecord(dataset_path, save_path, batch_size=32, max_length=2048, max
         "context": {"type": "int32", "shape": [-1]},
         "sample_ids": {"type": "int32", "shape": [-1]},
         "num_segments": {"type": "int32", "shape": [-1]},
-        "segment_ids": {"type": "int32", "shape": [-1]},
+        "segment": {"type": "int32", "shape": [-1]},
         "segment_rel_offset": {"type": "int32", "shape": [-1]},
         "segment_rel": {"type": "int32", "shape": [-1]},
-        "spans": {"type": "int32", "shape": [-1]},
-        "target": {"type": "int32", "shape": [-1]},
-        "ext_ids": {"type": "int32", "shape": [-1]},
-        "ext_sub": {"type": "int32", "shape": [-1]},
-        "task_ids": {"type": "int32", "shape": [-1]},
+        "span": {"type": "int32", "shape": [-1]},
+        "ext_table_ids": {"type": "int32", "shape": [-1]},
+        "ext_table_sub": {"type": "int32", "shape": [-1]},
+        "label": {"type": "int32", "shape": [-1]},
     }
 
     writer = FileWriter(save_path, shard_num=shard_num, overwrite=True)
@@ -728,14 +727,13 @@ def save_mindrecord(dataset_path, save_path, batch_size=32, max_length=2048, max
                 "context": batch['context'][i],
                 "sample_ids": batch['sample_ids'][i],
                 "num_segments": batch['num_segments'][i],
-                "segment_ids": batch['segment_ids'][i],
+                "segment": batch['segment_ids'][i],
                 "segment_rel_offset": batch['segment_rel_offset'][i],
                 "segment_rel": batch['segment_rel'][i],
-                "spans": batch['spans'][i],
-                "target": batch['target'][i],
-                "ext_ids": batch['ext_ids'],
-                "ext_sub": batch['ext_sub'],
-                "task_ids": batch['task_ids'][i],
+                "span": batch['spans'][i],
+                "ext_table_ids": batch['ext_ids'],
+                "ext_table_sub": batch['ext_sub'],
+                "label": batch['target'][i],
             }
             data.append(sample)
         return data

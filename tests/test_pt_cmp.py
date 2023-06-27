@@ -90,8 +90,8 @@ def make_tensor(batch, seqlen, num_segment_bucket, ext_table_size):
 def test_ms_pt_cmp():
     # default CPM-Bee 10b
     # config = CPMBeeConfig()
-    config = CPMBeeConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=False)
-    pt_config = CPMBeeTorchConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=False)
+    config = CPMBeeConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=True)
+    pt_config = CPMBeeTorchConfig(86580, 128, 8, 8, 512, 4, position_bias_num_segment_buckets=2048, half=True)
     ms_model = CPMBee(config)
     pt_model = CPMBeeTorch(pt_config).cuda()
 

@@ -51,7 +51,7 @@ def test_map_saver():
 def test_save_mindrecord():
     dataset_path = '/mnt/code/lvyufeng/CPM-Bee/tutorials/basic_task_finetune/bin_data/train'
     save_path = dataset_path + '/test.mindrecord'
-    save_mindrecord(dataset_path, save_path)
+    save_mindrecord(dataset_path, save_path, batch_size=4)
 
 
 def test_prepare_dataset():
