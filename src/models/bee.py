@@ -367,6 +367,32 @@ class BeeForward(nn.Cell):
     def shard(self, dp, mp):
         self.model.shard(dp, mp)
 
+from mindspore.nn.wrap.loss_scale import _grad_scale
+
+class TrainOneStep(nn.TrainOneStepWithLossScaleCell):
+    def __init__(self, network, optimizer, scale_sense):
+        super().__init__(network, optimizer, scale_sense)
+    
+    def construct(self, *inputs):
+        weights = self.weights
+        loss = self.network(*inputs)
+        scaling_sens = self.scale_sense
+        status = Tensor([0] * 8, mstype.int32)
+
+        scaling_sens_filled = ops.ones_like(loss) * scaling_sens.astype(loss.dtype)
+        grads = self.grad(self.network, weights)(*inputs, scaling_sens_filled)
+        grads = self.hyper_map(ops.partial(_grad_scale, scaling_sens), grads)
+        # apply grad reducer on grads
+        grads = self.grad_reducer(grads)
+
+        # get the overflow buffer
+        cond = self.get_overflow_status(status, grads)
+        overflow = self.process_loss_scale(cond)
+        # if there is no overflow, do optimize
+        if not overflow:
+            grads = ops.clip_by_global_norm(grads, 1.0)
+            loss = ops.depend(loss, self.optimizer(grads))
+        return loss, cond, scaling_sens
 
 def init_weights(cell):
     if isinstance(cell, Linear):

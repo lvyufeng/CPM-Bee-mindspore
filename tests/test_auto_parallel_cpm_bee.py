@@ -7,7 +7,7 @@ from mindspore.dataset.transforms import TypeCast
 from mindspore.train import Model, LossMonitor
 from mindspore.amp import DynamicLossScaleManager
 
-from src.models import CPMBeeConfig, BeeForward
+from src.models import CPMBeeConfig, BeeForward, TrainOneStep
 from src.data_converter import save_mindrecord
 from src.lr_scheduler import Noam
 
@@ -55,12 +55,14 @@ def test_cpm_bee_cell():
     model = BeeForward(config)
     model.shard(4, 1)
 
-    lr_scheduer = Noam(1e-4, 100, 2000)
+    lr_scheduler = Noam(1e-4, 100, 2000)
     epoch_size = 5
-    optimizer = nn.AdamWeightDecay(model.trainable_params(), lr_scheduer)
+    optimizer = nn.AdamWeightDecay(model.trainable_params(), lr_scheduler, weight_decay=0.01)
 
     loss_scale_manager = DynamicLossScaleManager()
     loss_monitor = LossMonitor()
-    trainer = Model(model, optimizer=optimizer, loss_scale_manager=loss_scale_manager)
+
+    train_step = TrainOneStep(model, optimizer, loss_scale_manager.get_update_cell())
+    trainer = Model(train_step, loss_scale_manager=loss_scale_manager)
 
     trainer.train(epoch_size, dataset, callbacks=[loss_monitor])
