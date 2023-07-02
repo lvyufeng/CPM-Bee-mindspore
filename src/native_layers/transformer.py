@@ -80,8 +80,7 @@ class Encoder(nn.Cell):
                         mask_att=mask_modules[ith][0],
                         mask_ffn=mask_modules[ith][1],
                     )
-            if mindspore.get_context('mode') == mindspore.GRAPH_MODE:
-                block.recompute()
+            block.recompute()
             self.layers.append(block)
 
         self.output_layernorm = LayerNorm(dim_norm=dim_model, dtype=dtype, eps=eps)

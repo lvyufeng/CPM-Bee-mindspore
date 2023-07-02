@@ -88,6 +88,7 @@ class EmbeddingExt(nn.Cell):
         self.weight.parallel_optimizer = False
 
         self.gather = ops.Gather()
+        self.gather_2d = ops.Gather()
         self.matmul = ops.MatMul()
 
     def construct(self, ids: Tensor, ids_sub: Tensor):
@@ -98,10 +99,10 @@ class EmbeddingExt(nn.Cell):
         Return:
             :obj:`Tensor` of shape ``(batch_size, seq_len, embedding_size)``: The embedding output.
         """  # noqa: E501
-        ids_shape = ids.shape
-        ids = ids.reshape(-1)
-        embeds = self.gather(self.weight, ids, 0) / ops.sqrt(ops.scalar_to_tensor(self.dim_model, self.weight.dtype))
-        embeds = embeds.reshape(ids_shape + (self.dim_model,))
+        if ids.ndim > 1:
+            embeds = self.gather_2d(self.weight, ids, 0) / ops.sqrt(ops.scalar_to_tensor(self.dim_model, self.weight.dtype))
+        else:
+            embeds = self.gather(self.weight, ids, 0) / ops.sqrt(ops.scalar_to_tensor(self.dim_model, self.weight.dtype))
         return self.rotary_emb(embeds, ids_sub)
 
     def projection(self, x: Tensor, ext_table: Optional[Tensor] = None):
@@ -126,5 +127,6 @@ class EmbeddingExt(nn.Cell):
         return logits
 
     def shard(self, dp, mp):
-        self.gather.shard(((mp, 1), (1,)))
-        self.matmul.shard(((dp, mp), (mp, 1)))
+        self.gather.shard(((1, 1), (1,)))
+        self.gather_2d.shard(((1, 1), (1, 1)))
+        self.matmul.shard(((dp, 1), (1, mp)))
